@@ -1,0 +1,16 @@
+<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1200 620' preserveAspectRatio='xMidYMid slice'>
+  <defs>
+    <linearGradient id='skyGradient' x1='0' y1='0' x2='0' y2='1'>
+      <stop offset='0%' stop-color='#ffe1bf'/>
+      <stop offset='100%' stop-color='#fff1dd'/>
+    </linearGradient>
+  </defs>
+  <rect width='1200' height='620' fill='url(#skyGradient)'/>
+  <polygon points='0,620 460,430 780,560 1200,330 1200,620' fill='#4a3c2d' opacity='0.92'/>
+  <polygon points='0,620 340,500 640,620' fill='#e78f45'/>
+  <polygon points='640,620 900,500 1200,620' fill='#e78f45'/>
+  <circle cx='980' cy='140' r='64' fill='white' opacity='0.24'/>
+  <text x='930' y='430' fill='white' font-size='58' font-family='Segoe UI, Arial, sans-serif' font-weight='500' text-anchor='end'>2026</text>
+  <text x='930' y='498' fill='white' font-size='72' letter-spacing='2' font-family='Segoe UI, Arial, sans-serif' font-weight='700' text-anchor='end'>JUNE</text>
+</svg>
+
