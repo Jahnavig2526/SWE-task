@@ -16,6 +16,7 @@ import {
   Tag,
 } from "lucide-react";
 import confetti from "canvas-confetti";
+import { createPortal } from "react-dom";
 import {
   useEffect,
   useMemo,
@@ -127,6 +128,7 @@ type MagneticDateCellProps = {
   accent: string;
   darkMode: boolean;
   onSelect: (day: Date) => void;
+  onRangeSelect: (day: Date) => void;
   onHoverStart: (day: Date) => void;
   onHoverEnd: () => void;
 };
@@ -150,6 +152,7 @@ function MagneticDateCell({
   accent,
   darkMode,
   onSelect,
+  onRangeSelect,
   onHoverStart,
   onHoverEnd,
 }: MagneticDateCellProps) {
@@ -181,6 +184,7 @@ function MagneticDateCell({
       whileHover={isDisabled ? undefined : { scale: 1.08 }}
       whileTap={isDisabled ? undefined : { scale: 0.96 }}
       onClick={() => onSelect(date)}
+      onDoubleClick={() => onRangeSelect(date)}
       onMouseEnter={() => onHoverStart(date)}
       onMouseMove={handleMouseMove}
       onMouseLeave={() => {
@@ -276,7 +280,7 @@ function MagneticDateCell({
         >
           {events.slice(0, 3).map((event) => (
             <p key={event.id} className="truncate">
-              {getEventTypeEmoji(event.type)} {event.title}
+              {getEventTypeEmoji(event.type)} Event: {event.title}
             </p>
           ))}
           {events.length > 3 ? <p className="text-[var(--accent)]">+{events.length - 3} more</p> : null}
@@ -403,6 +407,14 @@ function getDateOffset(base: Date, offset: number) {
   return next;
 }
 
+function isDateInRange(day: Date, start: Date | null, end: Date | null) {
+  if (!start || !end) {
+    return false;
+  }
+
+  return isSameDay(day, start) || isSameDay(day, end) || isBetweenDates(day, start, end);
+}
+
 function getCalendarDays(viewDate: Date): DayCell[] {
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -436,6 +448,7 @@ export default function WallCalendar() {
   const [themeName, setThemeName] = useState<ThemeName>("climber-blue");
   const [darkMode, setDarkMode] = useState(false);
   const [eventModalDate, setEventModalDate] = useState<Date | null>(null);
+  const clickTimerRef = useRef<number | null>(null);
   const [eventDraft, setEventDraft] = useState<{ type: EventType; title: string; time: string }>({
     type: "Meeting",
     title: "",
@@ -465,6 +478,56 @@ export default function WallCalendar() {
       done: false,
     },
   ]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    try {
+      const savedEventsRaw = window.localStorage.getItem("wall-calendar-events");
+      const savedRangeRaw = window.localStorage.getItem("wall-calendar-range");
+
+      if (savedEventsRaw) {
+        const parsedEvents = JSON.parse(savedEventsRaw) as Record<string, CalendarEvent[]>;
+        setEventsByDate(parsedEvents);
+      }
+
+      if (savedRangeRaw) {
+        const parsedRange = JSON.parse(savedRangeRaw) as {
+          start: string | null;
+          end: string | null;
+        };
+
+        setRangeStart(parsedRange.start ? new Date(parsedRange.start) : null);
+        setRangeEnd(parsedRange.end ? new Date(parsedRange.end) : null);
+      }
+    } catch {
+      // Ignore malformed persisted state and keep defaults.
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem("wall-calendar-events", JSON.stringify(eventsByDate));
+  }, [eventsByDate]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") {
+      return;
+    }
+
+    window.localStorage.setItem(
+      "wall-calendar-range",
+      JSON.stringify({
+        start: rangeStart ? rangeStart.toISOString() : null,
+        end: rangeEnd ? rangeEnd.toISOString() : null,
+      }),
+    );
+  }, [rangeEnd, rangeStart]);
 
   const theme = THEMES[themeName];
   const monthTransitionKey = `${viewDate.getFullYear()}-${viewDate.getMonth()}`;
@@ -586,7 +649,7 @@ export default function WallCalendar() {
       })} - ${max.toLocaleDateString("en-US", {
         month: isCrossMonth ? "long" : undefined,
         day: "numeric",
-      })}`,
+      })} (${totalDays} days)`,
       subtitle: `Trekking Expedition (${totalDays} days)`,
     };
   }, [rangeEnd, rangeStart]);
@@ -702,8 +765,32 @@ export default function WallCalendar() {
   };
 
   const handleDayClick = (day: Date) => {
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+    }
+
+    clickTimerRef.current = window.setTimeout(() => {
+      openEventModal(day);
+      clickTimerRef.current = null;
+    }, 220);
+  };
+
+  const handleDayDoubleClick = (day: Date) => {
+    if (clickTimerRef.current) {
+      window.clearTimeout(clickTimerRef.current);
+      clickTimerRef.current = null;
+    }
+
     handleDateSelect(day);
   };
+
+  useEffect(() => {
+    return () => {
+      if (clickTimerRef.current) {
+        window.clearTimeout(clickTimerRef.current);
+      }
+    };
+  }, []);
 
   const addQuickTask = () => {
     setNotes((current) => [
@@ -1094,6 +1181,7 @@ export default function WallCalendar() {
                         accent={theme.accent}
                         darkMode={darkMode}
                         onSelect={handleDayClick}
+                        onRangeSelect={handleDayDoubleClick}
                         onHoverStart={setHoverDate}
                         onHoverEnd={() => setHoverDate(null)}
                       />
@@ -1111,8 +1199,10 @@ export default function WallCalendar() {
         </AnimatePresence>
       </div>
 
-      <AnimatePresence>
-        {eventModalDate ? (
+      {typeof document !== "undefined"
+        ? createPortal(
+            <AnimatePresence>
+              {eventModalDate ? (
           <motion.div
             className="no-print fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
             initial={{ opacity: 0 }}
@@ -1127,16 +1217,18 @@ export default function WallCalendar() {
               transition={{ type: "spring", stiffness: 260, damping: 22 }}
               onClick={(event) => event.stopPropagation()}
               className={[
-                "w-full max-w-md rounded-2xl border p-5 shadow-2xl",
-                darkMode ? "border-slate-700 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-800",
+                "w-full max-w-md rounded-2xl border p-5 shadow-2xl backdrop-blur-lg",
+                darkMode
+                  ? "border-white/20 bg-slate-800/60 text-slate-100"
+                  : "border-white/20 bg-black/40 text-slate-100",
               ].join(" ")}
             >
-              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--calendar-text-muted)]">
+              <h3 className="text-sm font-semibold uppercase tracking-wider text-white">
                 Add Event • {formatRangeLong(eventModalDate)}
               </h3>
 
               <div className="mt-4 space-y-3">
-                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-text-muted)]">
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-white/90 [text-shadow:0px_1px_2px_rgba(0,0,0,0.5)]">
                   Event Type
                 </label>
                 <select
@@ -1148,7 +1240,7 @@ export default function WallCalendar() {
                     "w-full rounded-lg border px-3 py-2 text-sm outline-none",
                     darkMode
                       ? "border-slate-700 bg-slate-800 text-slate-100"
-                      : "border-slate-300 bg-white text-slate-800",
+                      : "border-white/25 bg-slate-800/70 text-slate-100",
                   ].join(" ")}
                 >
                   {EVENT_TYPE_OPTIONS.map((option) => (
@@ -1158,7 +1250,7 @@ export default function WallCalendar() {
                   ))}
                 </select>
 
-                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-text-muted)]">
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-white/90 [text-shadow:0px_1px_2px_rgba(0,0,0,0.5)]">
                   Event Title
                 </label>
                 <input
@@ -1170,12 +1262,12 @@ export default function WallCalendar() {
                   className={[
                     "w-full rounded-lg border px-3 py-2 text-sm outline-none",
                     darkMode
-                      ? "border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-500"
-                      : "border-slate-300 bg-white text-slate-800 placeholder:text-slate-400",
+                      ? "border-slate-700 bg-slate-800 text-slate-100 placeholder:text-gray-400"
+                      : "border-white/25 bg-slate-800/70 text-slate-100 placeholder:text-gray-400",
                   ].join(" ")}
                 />
 
-                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-text-muted)]">
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-white/90 [text-shadow:0px_1px_2px_rgba(0,0,0,0.5)]">
                   Time
                 </label>
                 <input
@@ -1188,7 +1280,7 @@ export default function WallCalendar() {
                     "w-full rounded-lg border px-3 py-2 text-sm outline-none",
                     darkMode
                       ? "border-slate-700 bg-slate-800 text-slate-100"
-                      : "border-slate-300 bg-white text-slate-800",
+                      : "border-white/25 bg-slate-800/70 text-slate-100",
                   ].join(" ")}
                 />
               </div>
@@ -1197,14 +1289,17 @@ export default function WallCalendar() {
                 <button
                   type="button"
                   onClick={closeEventModal}
-                  className="rounded-full border border-[var(--calendar-ring-border)] px-3 py-1.5 text-xs font-semibold text-[var(--calendar-button-text)]"
+                  className={[
+                    "rounded-full border border-white/50 px-3 py-1.5 text-xs font-semibold text-white transition hover:bg-white/10",
+                    darkMode ? "text-slate-300" : "text-white",
+                  ].join(" ")}
                 >
                   Cancel
                 </button>
                 <button
                   type="button"
                   onClick={saveEvent}
-                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-white shadow-lg"
                   style={{ backgroundColor: theme.accent }}
                 >
                   Save Event
@@ -1212,8 +1307,11 @@ export default function WallCalendar() {
               </div>
             </motion.div>
           </motion.div>
-        ) : null}
-      </AnimatePresence>
+              ) : null}
+            </AnimatePresence>,
+            document.body,
+          )
+        : null}
     </section>
   );
 }
