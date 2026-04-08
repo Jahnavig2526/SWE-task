@@ -45,6 +45,11 @@ h4 {
     background: #fff;
   }
 
+  @page {
+    size: A4 portrait;
+    margin: 10mm;
+  }
+
   .no-print {
     display: none !important;
   }
@@ -61,5 +66,23 @@ h4 {
 
   .print-grid {
     break-inside: avoid;
+  }
+
+  .print-only-calendar .print-range-summary {
+    display: block !important;
+    margin-bottom: 12px !important;
+  }
+
+  .print-only-calendar img,
+  .print-only-calendar .pointer-events-none.absolute.left-1\/2.top-2\.5 {
+    display: none !important;
+  }
+
+  .print-only-calendar .grid {
+    gap: 10px !important;
+  }
+
+  .print-only-calendar .print-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }

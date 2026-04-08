@@ -4,6 +4,7 @@ import { AnimatePresence, motion, useMotionValue, useSpring } from "framer-motio
 import {
   Camera,
   CalendarDays,
+  CircleCheck,
   Check,
   Gift,
   Moon,
@@ -15,7 +16,6 @@ import {
   Tag,
 } from "lucide-react";
 import confetti from "canvas-confetti";
-import html2canvas from "html2canvas";
 import {
   useEffect,
   useMemo,
@@ -45,6 +45,24 @@ type CalendarNote = {
   text: string;
   dateKey: string;
   done: boolean;
+};
+
+type EventType = "Birthday" | "Dinner" | "Trek" | "Meeting" | "Other";
+
+type CalendarEvent = {
+  id: number;
+  type: EventType;
+  title: string;
+  time: string;
+};
+
+type RangeSummary = {
+  durationDays: number;
+  start: Date;
+  end: Date;
+  isCrossMonth: boolean;
+  title: string;
+  subtitle: string;
 };
 
 const WEEKDAYS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -98,7 +116,12 @@ type MagneticDateCellProps = {
   isToday: boolean;
   isInRange: boolean;
   isPreview: boolean;
+  isRangeSegment: boolean;
+  isRangeStartEdge: boolean;
+  isRangeEndEdge: boolean;
   hasNote: boolean;
+  events: CalendarEvent[];
+  isHovered: boolean;
   holidayType: "gift" | "confetti" | undefined;
   activityLevel: number;
   accent: string;
@@ -116,7 +139,12 @@ function MagneticDateCell({
   isToday,
   isInRange,
   isPreview,
+  isRangeSegment,
+  isRangeStartEdge,
+  isRangeEndEdge,
   hasNote,
+  events,
+  isHovered,
   holidayType,
   activityLevel,
   accent,
@@ -131,6 +159,8 @@ function MagneticDateCell({
   const springY = useSpring(magneticY, { stiffness: 220, damping: 20, mass: 0.22 });
   const isDisabled = !inCurrentMonth;
   const glowOpacity = Math.min(0.2 + activityLevel * 0.18, 0.8);
+  const topEvent = events[0];
+  const extraEvents = Math.max(events.length - 1, 0);
 
   const handleMouseMove = (event: MouseEvent<HTMLButtonElement>) => {
     if (isDisabled) {
@@ -165,19 +195,27 @@ function MagneticDateCell({
         onHoverEnd();
       }}
       className={[
-        "relative mx-auto flex h-10 w-10 items-center justify-center rounded-full text-[28px] font-medium transition",
+        "relative mx-auto flex h-12 w-full items-center justify-center text-[28px] font-medium transition",
         isDisabled ? "text-[var(--calendar-inactive-date)]" : "text-[var(--calendar-text)]",
-        isPreview ? "bg-[var(--accent-soft)]/70 text-[var(--calendar-text)]" : "",
-        isInRange ? "bg-[var(--accent-soft)]" : "",
-        isStart || isEnd
-          ? "bg-[var(--accent)] text-white shadow-[0_2px_9px_rgba(47,155,227,0.35)]"
-          : "",
         isToday && !isStart && !isEnd
           ? "ring-1 ring-[var(--accent)]/35 ring-offset-1 ring-offset-[var(--calendar-today-offset)]"
           : "",
         darkMode ? "hover:bg-white/10" : "",
       ].join(" ")}
     >
+      {isRangeSegment ? (
+        <span
+          className={[
+            "pointer-events-none absolute left-0 right-0 top-1/2 h-8 -translate-y-1/2",
+            darkMode
+              ? "bg-[var(--accent)]/30 shadow-[0_0_10px_var(--accent-ribbon)]"
+              : "bg-[var(--accent-soft)]",
+            isRangeStartEdge ? "rounded-l-full" : "rounded-none",
+            isRangeEndEdge ? "rounded-r-full" : "rounded-none",
+          ].join(" ")}
+        />
+      ) : null}
+
       {activityLevel > 0 && !isDisabled ? (
         <motion.span
           aria-hidden="true"
@@ -190,23 +228,59 @@ function MagneticDateCell({
           style={{ boxShadow: `0 0 18px ${accent}` }}
         />
       ) : null}
-      {(isInRange || isPreview) && !isStart && !isEnd ? (
-        <motion.span
-          layoutId={`range-ribbon-${toDateKey(date)}`}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          className="absolute inset-0 -z-10 rounded-full bg-[var(--accent-soft)]"
-        />
-      ) : null}
-      <motion.span style={{ x: springX, y: springY }} className="relative z-10">
+      <motion.span
+        style={{ x: springX, y: springY }}
+        className={[
+          "relative z-10 grid h-10 w-10 place-items-center rounded-full",
+          isStart || isEnd
+            ? "bg-[var(--accent)] text-white shadow-[0_2px_9px_rgba(47,155,227,0.35)]"
+            : "",
+          isPreview && !isStart && !isEnd
+            ? darkMode
+              ? "bg-[var(--accent)]/20"
+              : "bg-[var(--accent-soft)]/70"
+            : "",
+          isInRange && !isStart && !isEnd
+            ? darkMode
+              ? "bg-[var(--accent)]/15"
+              : "bg-[var(--accent-soft)]"
+            : "",
+        ].join(" ")}
+      >
         {date.getDate()}
       </motion.span>
-      {hasNote ? <Star size={10} className="absolute right-0.5 top-0.5 text-amber-500" /> : null}
+      {events.length > 0 ? (
+        <span className="absolute right-0.5 top-0.5 z-20 inline-flex items-center gap-0.5 rounded-full bg-[var(--calendar-button-bg)] px-1 py-0.5 text-[9px] leading-none shadow-sm">
+          <span>{getEventTypeEmoji(topEvent.type)}</span>
+          {extraEvents > 0 ? <span className="font-semibold text-[var(--accent)]">+{extraEvents}</span> : null}
+        </span>
+      ) : null}
+      {hasNote ? <Star size={10} className="absolute bottom-0.5 right-0.5 text-amber-500" /> : null}
       {holidayType === "gift" ? (
         <Gift size={10} className="absolute left-0.5 top-0.5 text-rose-500" />
       ) : null}
       {holidayType === "confetti" ? (
         <PartyPopper size={10} className="absolute left-0.5 top-0.5 text-violet-500" />
+      ) : null}
+      {isHovered && events.length > 0 ? (
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: 6 }}
+          className={[
+            "pointer-events-none absolute left-1/2 top-0 z-30 w-44 -translate-x-1/2 -translate-y-[110%] rounded-lg border px-2 py-1.5 text-left text-[10px] shadow-xl",
+            darkMode
+              ? "border-slate-700 bg-slate-900/95 text-slate-100"
+              : "border-slate-200 bg-white/95 text-slate-700",
+          ].join(" ")}
+        >
+          {events.slice(0, 3).map((event) => (
+            <p key={event.id} className="truncate">
+              {getEventTypeEmoji(event.type)} {event.title}
+            </p>
+          ))}
+          {events.length > 3 ? <p className="text-[var(--accent)]">+{events.length - 3} more</p> : null}
+        </motion.div>
       ) : null}
     </motion.button>
   );
@@ -244,6 +318,14 @@ const HOLIDAYS: Record<string, "gift" | "confetti"> = {
   "07-04": "confetti",
   "12-25": "gift",
 };
+
+const EVENT_TYPE_OPTIONS: Array<{ type: EventType; label: string; emoji: string }> = [
+  { type: "Birthday", label: "Birthday", emoji: "🎂" },
+  { type: "Dinner", label: "Dinner", emoji: "🍽️" },
+  { type: "Trek", label: "Trek", emoji: "🏔️" },
+  { type: "Meeting", label: "Meeting", emoji: "📅" },
+  { type: "Other", label: "Other", emoji: "✨" },
+];
 
 function pad(value: number) {
   return value.toString().padStart(2, "0");
@@ -296,6 +378,31 @@ function isDateInsideRange(dateKey: string, start: Date, end: Date) {
   return value >= startOfDay(min) && value <= startOfDay(max);
 }
 
+function formatRangeLong(date: Date) {
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function getEventTypeEmoji(type: EventType) {
+  return EVENT_TYPE_OPTIONS.find((option) => option.type === type)?.emoji ?? "✨";
+}
+
+function formatRangeTagDate(date: Date) {
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+  });
+}
+
+function getDateOffset(base: Date, offset: number) {
+  const next = new Date(base);
+  next.setDate(base.getDate() + offset);
+  return next;
+}
+
 function getCalendarDays(viewDate: Date): DayCell[] {
   const year = viewDate.getFullYear();
   const month = viewDate.getMonth();
@@ -328,7 +435,22 @@ export default function WallCalendar() {
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
   const [themeName, setThemeName] = useState<ThemeName>("climber-blue");
   const [darkMode, setDarkMode] = useState(false);
-  const [isSnapshotting, setIsSnapshotting] = useState(false);
+  const [eventModalDate, setEventModalDate] = useState<Date | null>(null);
+  const [eventDraft, setEventDraft] = useState<{ type: EventType; title: string; time: string }>({
+    type: "Meeting",
+    title: "",
+    time: "09:00",
+  });
+  const [eventsByDate, setEventsByDate] = useState<Record<string, CalendarEvent[]>>({
+    [toDateKey(today)]: [
+      {
+        id: Date.now(),
+        type: "Meeting",
+        title: "Trail planning",
+        time: "10:30",
+      },
+    ],
+  });
   const [notes, setNotes] = useState<CalendarNote[]>([
     {
       id: 1,
@@ -399,6 +521,7 @@ export default function WallCalendar() {
   );
   const currentMonth = monthLabel;
   const monthHeroImage = mountainImages[currentMonth] ?? mountainImages.January;
+  const monthHeroImageHiRes = monthHeroImage.replace("w=1000", "w=2200");
 
   useEffect(() => {
     setHeroImageFailed(false);
@@ -436,6 +559,36 @@ export default function WallCalendar() {
     const max = rangeStart < rangeEnd ? rangeEnd : rangeStart;
     const milliseconds = startOfDay(max) - startOfDay(min);
     return Math.floor(milliseconds / (24 * 60 * 60 * 1000)) + 1;
+  }, [rangeEnd, rangeStart]);
+
+  const isRangeActive = Boolean(rangeStart || rangeEnd);
+  const hasCommittedRange = Boolean(rangeStart && rangeEnd);
+
+  const rangeSummary = useMemo<RangeSummary | null>(() => {
+    if (!rangeStart || !rangeEnd) {
+      return null;
+    }
+
+    const min = rangeStart < rangeEnd ? rangeStart : rangeEnd;
+    const max = rangeStart < rangeEnd ? rangeEnd : rangeStart;
+    const isCrossMonth =
+      min.getFullYear() !== max.getFullYear() || min.getMonth() !== max.getMonth();
+    const totalDays = Math.floor((startOfDay(max) - startOfDay(min)) / (24 * 60 * 60 * 1000)) + 1;
+
+    return {
+      durationDays: totalDays,
+      start: min,
+      end: max,
+      isCrossMonth,
+      title: `Selected Range: ${min.toLocaleDateString("en-US", {
+        month: "long",
+        day: "numeric",
+      })} - ${max.toLocaleDateString("en-US", {
+        month: isCrossMonth ? "long" : undefined,
+        day: "numeric",
+      })}`,
+      subtitle: `Trekking Expedition (${totalDays} days)`,
+    };
   }, [rangeEnd, rangeStart]);
 
   const triggerRangeCompletionConfetti = () => {
@@ -478,27 +631,45 @@ export default function WallCalendar() {
     }
   }, [notes, rangeEnd, rangeStart]);
 
-  const handleSnapshot = async () => {
-    if (!calendarRef.current || isSnapshotting) {
+  const handleSnapshot = () => {
+    if (!calendarRef.current) {
       return;
     }
 
-    setIsSnapshotting(true);
-    try {
-      const canvas = await html2canvas(calendarRef.current, {
-        useCORS: true,
-        backgroundColor: modeColors.shellBg,
-        scale: 2,
-      });
-      const link = document.createElement("a");
-      link.download = `wall-calendar-${monthKey}.png`;
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    } catch {
-      window.print();
-    } finally {
-      setIsSnapshotting(false);
+    window.print();
+  };
+
+  const openEventModal = (day: Date) => {
+    setEventModalDate(day);
+    setEventDraft({
+      type: "Meeting",
+      title: "",
+      time: "09:00",
+    });
+  };
+
+  const closeEventModal = () => {
+    setEventModalDate(null);
+  };
+
+  const saveEvent = () => {
+    if (!eventModalDate || !eventDraft.title.trim()) {
+      return;
     }
+
+    const dateKey = toDateKey(eventModalDate);
+    const nextEvent: CalendarEvent = {
+      id: Date.now(),
+      type: eventDraft.type,
+      title: eventDraft.title.trim(),
+      time: eventDraft.time,
+    };
+
+    setEventsByDate((current) => ({
+      ...current,
+      [dateKey]: [...(current[dateKey] ?? []), nextEvent],
+    }));
+    closeEventModal();
   };
 
   const handleDateSelect = (day: Date) => {
@@ -513,8 +684,8 @@ export default function WallCalendar() {
     const start = new Date(rangeStart);
 
     if (picked < start) {
-      setRangeEnd(start);
       setRangeStart(picked);
+      setRangeEnd(start);
       setHoverDate(null);
       return;
     }
@@ -528,6 +699,10 @@ export default function WallCalendar() {
         navigator.vibrate(18);
       }
     }
+  };
+
+  const handleDayClick = (day: Date) => {
+    handleDateSelect(day);
   };
 
   const addQuickTask = () => {
@@ -628,13 +803,13 @@ export default function WallCalendar() {
             ))}
           </div>
 
-          <div className="relative h-64 overflow-hidden md:h-96 print:h-[240px]">
+          <div className="no-print relative h-64 overflow-hidden md:h-96 print:h-[240px]">
             <div className="absolute inset-0 bg-gradient-to-b from-slate-500 to-slate-300" />
             {!heroImageFailed ? (
               // eslint-disable-next-line @next/next/no-img-element
               <img
                 key={monthTransitionKey}
-                src={monthHeroImage}
+                src={monthHeroImageHiRes}
                 alt="Mountain trekking landscape"
                 className="h-full w-full object-cover transition-opacity duration-500 object-[center_78%] md:object-[center_82%] contrast-110 saturate-110"
                 loading="eager"
@@ -718,6 +893,21 @@ export default function WallCalendar() {
                     {value.label}
                   </button>
                 ))}
+                {isRangeActive ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setRangeStart(null);
+                      setRangeEnd(null);
+                      setHoverDate(null);
+                    }}
+                    className="inline-flex items-center gap-1 rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] px-2 py-1 text-[11px] font-semibold text-[var(--calendar-button-text)] transition hover:bg-[var(--calendar-button-hover)]"
+                    aria-label="Reset range"
+                  >
+                    <RotateCcw size={12} className="text-[var(--accent)]" />
+                    Reset Range
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   onClick={() => window.print()}
@@ -729,11 +919,10 @@ export default function WallCalendar() {
                 <button
                   type="button"
                   onClick={handleSnapshot}
-                  className="inline-flex items-center gap-2 rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] px-3 py-1 text-xs font-semibold text-[var(--calendar-button-text)] hover:bg-[var(--calendar-button-hover)] disabled:cursor-not-allowed disabled:opacity-60"
-                  disabled={isSnapshotting}
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] px-3 py-1 text-xs font-semibold text-[var(--calendar-button-text)] hover:bg-[var(--calendar-button-hover)]"
                 >
                   <Camera size={14} />
-                  {isSnapshotting ? "Capturing..." : "Snapshot"}
+                  Snapshot
                 </button>
                 <button
                   type="button"
@@ -746,6 +935,26 @@ export default function WallCalendar() {
                 </button>
               </div>
             </div>
+
+            {rangeSummary ? (
+              <div className="print-range-summary mb-4 hidden rounded-xl border border-[var(--accent-border)] bg-white/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.12)] backdrop-blur-md print:block">
+                <h4 className="mb-2 text-[11px] font-bold tracking-[0.14em] text-[var(--calendar-text-muted)]">
+                  RANGE SUMMARY
+                </h4>
+                <div className="flex items-center gap-3 border-l-4 border-[var(--accent)] pl-3">
+                  <CircleCheck size={16} className="text-[var(--accent)]" />
+                  <div>
+                    <p className="font-bold text-[var(--calendar-text)]">{rangeSummary.title}</p>
+                    <p className="text-sm text-[var(--calendar-text-muted)]">{rangeSummary.subtitle}</p>
+                    {rangeSummary.isCrossMonth ? (
+                      <p className="text-[11px] text-[var(--accent)]">
+                        Trek: {formatRangeTagDate(rangeSummary.start)} - {formatRangeTagDate(rangeSummary.end)}
+                      </p>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-6 md:grid-cols-[0.34fr_0.66fr] md:gap-8">
               <div>
@@ -783,6 +992,26 @@ export default function WallCalendar() {
                   </ul>
                 </div>
 
+                {rangeSummary ? (
+                  <div className="range-recap-box mt-3 rounded-xl border border-[var(--accent-border)] bg-white/20 p-3 shadow-[0_8px_20px_rgba(15,23,42,0.12)] backdrop-blur-md print:hidden">
+                    <h4 className="mb-2 text-[11px] font-bold tracking-[0.14em] text-[var(--calendar-text-muted)]">
+                      RANGE SUMMARY
+                    </h4>
+                    <div className="flex items-center gap-3 border-l-4 border-[var(--accent)] pl-3">
+                      <CircleCheck size={16} className="text-[var(--accent)]" />
+                      <div className="range-recaps">
+                        <p className="font-bold text-[var(--calendar-text)]">{rangeSummary.title}</p>
+                        <p className="text-sm text-[var(--calendar-text-muted)]">{rangeSummary.subtitle}</p>
+                        {rangeSummary.isCrossMonth ? (
+                          <p className="text-[11px] text-[var(--accent)]">
+                            Trek: {formatRangeTagDate(rangeSummary.start)} - {formatRangeTagDate(rangeSummary.end)}
+                          </p>
+                        ) : null}
+                      </div>
+                    </div>
+                  </div>
+                ) : null}
+
                 <div className="no-print mt-3 space-y-2 border-b border-[var(--calendar-border)] pb-2">
                   <button
                     type="button"
@@ -799,21 +1028,6 @@ export default function WallCalendar() {
               </div>
 
               <div>
-                <div className="mb-2 flex justify-end">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRangeStart(null);
-                      setRangeEnd(null);
-                      setHoverDate(null);
-                    }}
-                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] text-[var(--calendar-button-text)] transition hover:bg-[var(--calendar-button-hover)]"
-                    aria-label="Reset selected range"
-                    title="Reset selected range"
-                  >
-                    <RotateCcw size={14} className="text-[var(--accent)]" />
-                  </button>
-                </div>
                 <div className="grid grid-cols-7 border-b border-[var(--calendar-border)] pb-2 text-center text-[12px] font-bold tracking-[0.08em] text-[var(--calendar-text-secondary)]">
                   {WEEKDAYS.map((day) => (
                     <span
@@ -826,19 +1040,38 @@ export default function WallCalendar() {
                 </div>
 
                 <div ref={gridRef} className="print-grid grid grid-cols-7 gap-y-1 pt-3">
-                  {days.map(({ date, inCurrentMonth }) => {
+                  {days.map(({ date, inCurrentMonth }, index) => {
                     const isStart = isSameDay(date, rangeStart);
                     const isEnd = isSameDay(date, rangeEnd);
                     const isToday = isSameDay(date, today);
                     const isInRange = isSelectedRangeDay(date);
                     const isPreview = isPreviewRangeDay(date);
+                    const isRangeSegment = isStart || isEnd || isInRange || isPreview;
+
+                    const prevDate = getDateOffset(date, -1);
+                    const nextDate = getDateOffset(date, 1);
+                    const prevActive =
+                      isSameDay(prevDate, rangeStart) ||
+                      isSameDay(prevDate, rangeEnd) ||
+                      isSelectedRangeDay(prevDate) ||
+                      isPreviewRangeDay(prevDate);
+                    const nextActive =
+                      isSameDay(nextDate, rangeStart) ||
+                      isSameDay(nextDate, rangeEnd) ||
+                      isSelectedRangeDay(nextDate) ||
+                      isPreviewRangeDay(nextDate);
+
+                    const isRangeStartEdge = !prevActive || index % 7 === 0;
+                    const isRangeEndEdge = !nextActive || index % 7 === 6;
+
                     const hasNote = notes.some((note) => note.dateKey === toDateKey(date));
+                    const dayEvents = eventsByDate[toDateKey(date)] ?? [];
                     const holidayType = HOLIDAYS[toMonthDayKey(date)];
                     const noteCount = noteCountByDate[toDateKey(date)] ?? 0;
                     const rangeIntensity = isWithinCommittedRange(date)
                       ? Math.min(selectedRangeSpanDays / 8, 1.6)
                       : 0;
-                    const activityLevel = noteCount + rangeIntensity;
+                    const activityLevel = noteCount + rangeIntensity + Math.min(dayEvents.length * 0.35, 1.2);
 
                     return (
                       <MagneticDateCell
@@ -850,12 +1083,17 @@ export default function WallCalendar() {
                         isToday={isToday}
                         isInRange={isInRange}
                         isPreview={isPreview}
+                        isRangeSegment={isRangeSegment}
+                        isRangeStartEdge={isRangeStartEdge}
+                        isRangeEndEdge={isRangeEndEdge}
                         hasNote={hasNote}
+                        events={dayEvents}
+                        isHovered={isSameDay(date, hoverDate)}
                         holidayType={holidayType}
                         activityLevel={activityLevel}
                         accent={theme.accent}
                         darkMode={darkMode}
-                        onSelect={handleDateSelect}
+                        onSelect={handleDayClick}
                         onHoverStart={setHoverDate}
                         onHoverEnd={() => setHoverDate(null)}
                       />
@@ -866,12 +1104,116 @@ export default function WallCalendar() {
             </div>
 
             <p className="pb-1 pt-4 text-center text-[13px] text-[var(--calendar-text-muted)]">
-              Click to select start · Click again for end · Notes saved locally
+              Click to select start · Click again for end{hasCommittedRange ? "" : " or a later date"} · Notes saved locally
             </p>
           </div>
           </motion.div>
         </AnimatePresence>
       </div>
+
+      <AnimatePresence>
+        {eventModalDate ? (
+          <motion.div
+            className="no-print fixed inset-0 z-[90] flex items-center justify-center bg-black/40 px-4 backdrop-blur-sm"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            onClick={closeEventModal}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.8, y: 20 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 10 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22 }}
+              onClick={(event) => event.stopPropagation()}
+              className={[
+                "w-full max-w-md rounded-2xl border p-5 shadow-2xl",
+                darkMode ? "border-slate-700 bg-slate-900 text-slate-100" : "border-slate-200 bg-white text-slate-800",
+              ].join(" ")}
+            >
+              <h3 className="text-sm font-semibold uppercase tracking-[0.12em] text-[var(--calendar-text-muted)]">
+                Add Event • {formatRangeLong(eventModalDate)}
+              </h3>
+
+              <div className="mt-4 space-y-3">
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-text-muted)]">
+                  Event Type
+                </label>
+                <select
+                  value={eventDraft.type}
+                  onChange={(event) =>
+                    setEventDraft((current) => ({ ...current, type: event.target.value as EventType }))
+                  }
+                  className={[
+                    "w-full rounded-lg border px-3 py-2 text-sm outline-none",
+                    darkMode
+                      ? "border-slate-700 bg-slate-800 text-slate-100"
+                      : "border-slate-300 bg-white text-slate-800",
+                  ].join(" ")}
+                >
+                  {EVENT_TYPE_OPTIONS.map((option) => (
+                    <option key={option.type} value={option.type}>
+                      {option.emoji} {option.label}
+                    </option>
+                  ))}
+                </select>
+
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-text-muted)]">
+                  Event Title
+                </label>
+                <input
+                  value={eventDraft.title}
+                  onChange={(event) =>
+                    setEventDraft((current) => ({ ...current, title: event.target.value }))
+                  }
+                  placeholder="Add event title"
+                  className={[
+                    "w-full rounded-lg border px-3 py-2 text-sm outline-none",
+                    darkMode
+                      ? "border-slate-700 bg-slate-800 text-slate-100 placeholder:text-slate-500"
+                      : "border-slate-300 bg-white text-slate-800 placeholder:text-slate-400",
+                  ].join(" ")}
+                />
+
+                <label className="block text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-text-muted)]">
+                  Time
+                </label>
+                <input
+                  type="time"
+                  value={eventDraft.time}
+                  onChange={(event) =>
+                    setEventDraft((current) => ({ ...current, time: event.target.value }))
+                  }
+                  className={[
+                    "w-full rounded-lg border px-3 py-2 text-sm outline-none",
+                    darkMode
+                      ? "border-slate-700 bg-slate-800 text-slate-100"
+                      : "border-slate-300 bg-white text-slate-800",
+                  ].join(" ")}
+                />
+              </div>
+
+              <div className="mt-5 flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={closeEventModal}
+                  className="rounded-full border border-[var(--calendar-ring-border)] px-3 py-1.5 text-xs font-semibold text-[var(--calendar-button-text)]"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEvent}
+                  className="rounded-full px-3 py-1.5 text-xs font-semibold text-white"
+                  style={{ backgroundColor: theme.accent }}
+                >
+                  Save Event
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        ) : null}
+      </AnimatePresence>
     </section>
   );
 }
