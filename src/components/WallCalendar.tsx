@@ -6,9 +6,12 @@ import {
   CalendarDays,
   Check,
   Gift,
+  Moon,
   PartyPopper,
   Printer,
+  RotateCcw,
   Star,
+  Sun,
   Tag,
 } from "lucide-react";
 import confetti from "canvas-confetti";
@@ -33,6 +36,8 @@ type ThemeDefinition = {
   accent: string;
   accentSoft: string;
   accentRibbon: string;
+  accentBg: string;
+  accentBorder: string;
 };
 
 type CalendarNote = {
@@ -57,21 +62,6 @@ const mountainImages: Record<string, string> = {
   October: "https://images.unsplash.com/photo-1447752875215-b2761acb3c5d?auto=format&fit=crop&q=80&w=1000",
   November: "https://images.unsplash.com/photo-1501854140801-50d01698950b?auto=format&fit=crop&q=80&w=1000",
   December: "https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&q=80&w=1000",
-};
-
-const MOUNTAIN_GLASS_TINTS: Record<string, string> = {
-  January: "rgba(39, 83, 124, 0.42)",
-  February: "rgba(86, 97, 122, 0.4)",
-  March: "rgba(63, 87, 112, 0.4)",
-  April: "rgba(41, 95, 78, 0.4)",
-  May: "rgba(90, 92, 68, 0.4)",
-  June: "rgba(108, 79, 59, 0.4)",
-  July: "rgba(47, 102, 78, 0.4)",
-  August: "rgba(52, 101, 88, 0.4)",
-  September: "rgba(53, 86, 118, 0.4)",
-  October: "rgba(92, 68, 60, 0.42)",
-  November: "rgba(88, 80, 72, 0.42)",
-  December: "rgba(74, 88, 112, 0.42)",
 };
 
 const PAGE_FLIP_ANIMATION = {
@@ -112,6 +102,7 @@ type MagneticDateCellProps = {
   holidayType: "gift" | "confetti" | undefined;
   activityLevel: number;
   accent: string;
+  darkMode: boolean;
   onSelect: (day: Date) => void;
   onHoverStart: (day: Date) => void;
   onHoverEnd: () => void;
@@ -129,6 +120,7 @@ function MagneticDateCell({
   holidayType,
   activityLevel,
   accent,
+  darkMode,
   onSelect,
   onHoverStart,
   onHoverEnd,
@@ -174,15 +166,16 @@ function MagneticDateCell({
       }}
       className={[
         "relative mx-auto flex h-10 w-10 items-center justify-center rounded-full text-[28px] font-medium transition",
-        isDisabled ? "text-[#c8ccd2]" : "text-slate-800",
-        isPreview ? "bg-[var(--accent-soft)]/70 text-slate-900" : "",
+        isDisabled ? "text-[var(--calendar-inactive-date)]" : "text-[var(--calendar-text)]",
+        isPreview ? "bg-[var(--accent-soft)]/70 text-[var(--calendar-text)]" : "",
         isInRange ? "bg-[var(--accent-soft)]" : "",
         isStart || isEnd
           ? "bg-[var(--accent)] text-white shadow-[0_2px_9px_rgba(47,155,227,0.35)]"
           : "",
         isToday && !isStart && !isEnd
-          ? "ring-1 ring-[var(--accent)]/35 ring-offset-1 ring-offset-[#f2f2f3]"
+          ? "ring-1 ring-[var(--accent)]/35 ring-offset-1 ring-offset-[var(--calendar-today-offset)]"
           : "",
+        darkMode ? "hover:bg-white/10" : "",
       ].join(" ")}
     >
       {activityLevel > 0 && !isDisabled ? (
@@ -222,21 +215,27 @@ function MagneticDateCell({
 const THEMES: Record<ThemeName, ThemeDefinition> = {
   "climber-blue": {
     label: "Climber Blue",
-    accent: "#2f9be3",
-    accentSoft: "#d9eefc",
-    accentRibbon: "#4aaef2",
+    accent: "#3b82f6",
+    accentSoft: "#dbeafe",
+    accentRibbon: "#60a5fa",
+    accentBg: "#eff6ff",
+    accentBorder: "#bfdbfe",
   },
   "moss-green": {
     label: "Moss Green",
-    accent: "#3f8f65",
-    accentSoft: "#dff1e5",
-    accentRibbon: "#67b78a",
+    accent: "#22c55e",
+    accentSoft: "#dcfce7",
+    accentRibbon: "#4ade80",
+    accentBg: "#f0fdf4",
+    accentBorder: "#bbf7d0",
   },
   "sunset-orange": {
     label: "Sunset Orange",
-    accent: "#e67b3c",
-    accentSoft: "#fde6d8",
-    accentRibbon: "#f3a16e",
+    accent: "#f97316",
+    accentSoft: "#ffedd5",
+    accentRibbon: "#fb923c",
+    accentBg: "#fff7ed",
+    accentBorder: "#fed7aa",
   },
 };
 
@@ -289,14 +288,6 @@ function isBetweenDates(day: Date, start: Date | null, end: Date | null) {
   return dayValue > startValue && dayValue < endValue;
 }
 
-function formatLabel(date: Date) {
-  return date.toLocaleDateString("en-US", {
-    month: "short",
-    day: "2-digit",
-    year: "numeric",
-  });
-}
-
 function isDateInsideRange(dateKey: string, start: Date, end: Date) {
   const date = new Date(dateKey);
   const min = start < end ? start : end;
@@ -336,6 +327,7 @@ export default function WallCalendar() {
   const [rangeEnd, setRangeEnd] = useState<Date | null>(null);
   const [hoverDate, setHoverDate] = useState<Date | null>(null);
   const [themeName, setThemeName] = useState<ThemeName>("climber-blue");
+  const [darkMode, setDarkMode] = useState(false);
   const [isSnapshotting, setIsSnapshotting] = useState(false);
   const [notes, setNotes] = useState<CalendarNote[]>([
     {
@@ -355,6 +347,48 @@ export default function WallCalendar() {
   const theme = THEMES[themeName];
   const monthTransitionKey = `${viewDate.getFullYear()}-${viewDate.getMonth()}`;
 
+  const modeColors = useMemo(
+    () =>
+      darkMode
+        ? {
+            shellBg: "#0f172a",
+            panelBg: "#111827",
+            contentBg: "#0f172a",
+            textPrimary: "#e5e7eb",
+            textSecondary: "#d1d5db",
+            textMuted: "#9ca3af",
+            border: "#334155",
+            chipBg: "#1e293b",
+            chipText: "#cbd5e1",
+            buttonBg: "#1e293b",
+            buttonHoverBg: "#334155",
+            buttonText: "#e2e8f0",
+            ringBorder: "#475569",
+            weekdayWeekend: "#60a5fa",
+            inactiveDateText: "#475569",
+            todayRingOffset: "#0f172a",
+          }
+        : {
+            shellBg: "#ffffff",
+            panelBg: "#f8fafc",
+            contentBg: "#ffffff",
+            textPrimary: "#1f2937",
+            textSecondary: "#374151",
+            textMuted: "#6b7280",
+            border: "#dbe5f3",
+            chipBg: "#f1f5f9",
+            chipText: "#64748b",
+            buttonBg: "#ffffff",
+            buttonHoverBg: "#eff6ff",
+            buttonText: "#1f2937",
+            ringBorder: "#dbe5f3",
+            weekdayWeekend: "#3b82f6",
+            inactiveDateText: "#cbd5e1",
+            todayRingOffset: "#ffffff",
+          },
+    [darkMode],
+  );
+
   const days = useMemo(() => getCalendarDays(viewDate), [viewDate]);
   const monthLabel = useMemo(
     () =>
@@ -365,7 +399,6 @@ export default function WallCalendar() {
   );
   const currentMonth = monthLabel;
   const monthHeroImage = mountainImages[currentMonth] ?? mountainImages.January;
-  const monthHeroTint = MOUNTAIN_GLASS_TINTS[monthLabel] ?? "rgba(62, 78, 101, 0.42)";
 
   useEffect(() => {
     setHeroImageFailed(false);
@@ -454,7 +487,7 @@ export default function WallCalendar() {
     try {
       const canvas = await html2canvas(calendarRef.current, {
         useCORS: true,
-        backgroundColor: "#f5f6f7",
+        backgroundColor: modeColors.shellBg,
         scale: 2,
       });
       const link = document.createElement("a");
@@ -545,16 +578,37 @@ export default function WallCalendar() {
   return (
     <section
       ref={calendarRef}
-      className="print-only-calendar mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:py-10"
+      className={[
+        "print-only-calendar mx-auto w-full max-w-5xl px-4 py-6 sm:px-6 lg:py-10",
+        darkMode ? "dark" : "",
+      ].join(" ")}
       style={
         {
           "--accent": theme.accent,
           "--accent-soft": theme.accentSoft,
           "--accent-ribbon": theme.accentRibbon,
+          "--accent-bg": theme.accentBg,
+          "--accent-border": theme.accentBorder,
+          "--calendar-shell-bg": modeColors.shellBg,
+          "--calendar-panel-bg": modeColors.panelBg,
+          "--calendar-content-bg": modeColors.contentBg,
+          "--calendar-text": modeColors.textPrimary,
+          "--calendar-text-secondary": modeColors.textSecondary,
+          "--calendar-text-muted": modeColors.textMuted,
+          "--calendar-border": modeColors.border,
+          "--calendar-chip-bg": modeColors.chipBg,
+          "--calendar-chip-text": modeColors.chipText,
+          "--calendar-button-bg": modeColors.buttonBg,
+          "--calendar-button-hover": modeColors.buttonHoverBg,
+          "--calendar-button-text": modeColors.buttonText,
+          "--calendar-ring-border": modeColors.ringBorder,
+          "--calendar-weekend": modeColors.weekdayWeekend,
+          "--calendar-inactive-date": modeColors.inactiveDateText,
+          "--calendar-today-offset": modeColors.todayRingOffset,
         } as CSSProperties
       }
     >
-      <div className="rounded-[2px] bg-[#f5f6f7] p-3 shadow-[0_26px_55px_rgba(32,52,72,0.22)]">
+      <div className="rounded-[2px] bg-[var(--calendar-shell-bg)] p-3 shadow-[0_26px_55px_rgba(32,52,72,0.22)] transition-colors">
         <AnimatePresence mode="wait" initial={false}>
           <motion.div
             key={monthTransitionKey}
@@ -563,7 +617,7 @@ export default function WallCalendar() {
             initial="enter"
             animate="center"
             exit="exit"
-            className="relative overflow-hidden bg-[#f1f2f3]"
+            className="relative overflow-hidden bg-[var(--calendar-panel-bg)] transition-colors"
           >
           <div className="pointer-events-none absolute left-1/2 top-2.5 z-20 flex -translate-x-1/2 gap-4 print:hidden">
             {Array.from({ length: 14 }).map((_, index) => (
@@ -617,42 +671,57 @@ export default function WallCalendar() {
             </button>
 
             <div
-              className="absolute bottom-6 right-6 rounded-2xl border border-white/40 px-5 py-3 text-right text-white shadow-[0_8px_30px_rgba(15,23,42,0.24)] backdrop-blur-md sm:bottom-8 sm:right-8"
-              style={{ backgroundColor: monthHeroTint }}
+              className={[
+                "absolute bottom-6 right-6 overflow-hidden rounded-2xl border px-5 py-3 text-right text-white shadow-[0_8px_30px_rgba(15,23,42,0.24)] backdrop-blur-xl sm:bottom-8 sm:right-8",
+                darkMode ? "bg-black/40 border-white/20" : "bg-white/40 border-white/50",
+              ].join(" ")}
+              style={{ borderColor: `${theme.accent}66` }}
             >
-              <p className="text-sm font-semibold tracking-[0.18em] text-white/90">{yearLabel}</p>
-              <h1 className="font-display text-4xl leading-none tracking-[0.05em] sm:text-6xl">
-                {monthLabel.toUpperCase()}
-              </h1>
+              <span
+                aria-hidden="true"
+                className="absolute inset-0"
+                style={{ backgroundColor: `${theme.accent}30` }}
+              />
+              <div className="relative">
+                <p className="text-sm font-semibold tracking-[0.18em] text-white/90">{yearLabel}</p>
+                <h1 className="font-display text-4xl leading-none tracking-[0.05em] sm:text-6xl">
+                  {monthLabel.toUpperCase()}
+                </h1>
+              </div>
             </div>
           </div>
 
-          <div className="bg-[#f2f2f3] px-4 pb-4 pt-5 sm:px-6">
+          <div className="bg-[var(--calendar-content-bg)] px-4 pb-4 pt-5 text-[var(--calendar-text)] transition-colors sm:px-6">
             <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
-              <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white/70 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-slate-600">
-                <CalendarDays size={14} />
+              <div className="inline-flex items-center gap-2 rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)]/80 px-3 py-1 text-xs font-semibold uppercase tracking-[0.08em] text-[var(--calendar-button-text)]">
+                <CalendarDays size={14} className="text-[var(--accent)]" />
                 Theme
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {Object.entries(THEMES).map(([key, value]) => (
                   <button
                     key={key}
                     type="button"
                     onClick={() => setThemeName(key as ThemeName)}
                     className={[
-                      "rounded-full border px-3 py-1 text-xs font-semibold transition",
+                      "inline-flex items-center gap-2 rounded-full border px-3 py-1 text-xs font-semibold transition",
                       themeName === key
-                        ? "border-slate-700 bg-slate-800 text-white"
-                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-100",
+                        ? "border-[var(--accent)] bg-[var(--accent)] text-white"
+                        : "border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] text-[var(--calendar-button-text)] hover:bg-[var(--calendar-button-hover)]",
                     ].join(" ")}
                   >
+                    <span
+                      className="h-2.5 w-2.5 rounded-full"
+                      style={{ backgroundColor: value.accent }}
+                      aria-hidden="true"
+                    />
                     {value.label}
                   </button>
                 ))}
                 <button
                   type="button"
                   onClick={() => window.print()}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] px-3 py-1 text-xs font-semibold text-[var(--calendar-button-text)] hover:bg-[var(--calendar-button-hover)]"
                 >
                   <Printer size={14} />
                   Print Range
@@ -660,22 +729,31 @@ export default function WallCalendar() {
                 <button
                   type="button"
                   onClick={handleSnapshot}
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-60"
+                  className="inline-flex items-center gap-2 rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] px-3 py-1 text-xs font-semibold text-[var(--calendar-button-text)] hover:bg-[var(--calendar-button-hover)] disabled:cursor-not-allowed disabled:opacity-60"
                   disabled={isSnapshotting}
                 >
                   <Camera size={14} />
                   {isSnapshotting ? "Capturing..." : "Snapshot"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setDarkMode((current) => !current)}
+                  className="inline-flex items-center justify-center rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] p-2 text-[var(--calendar-button-text)] transition hover:bg-[var(--calendar-button-hover)]"
+                  aria-label={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+                  title={darkMode ? "Switch to light mode" : "Switch to dark mode"}
+                >
+                  {darkMode ? <Sun size={16} className="text-amber-300" /> : <Moon size={16} className="text-[var(--accent)]" />}
                 </button>
               </div>
             </div>
 
             <div className="grid gap-6 md:grid-cols-[0.34fr_0.66fr] md:gap-8">
               <div>
-                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-700">
+                <p className="text-[10px] font-semibold uppercase tracking-[0.12em] text-[var(--calendar-text-secondary)]">
                   Notes
                 </p>
-                <div className="mt-3 min-h-[208px] rounded-sm bg-[repeating-linear-gradient(180deg,transparent_0,transparent_20px,#d9d9dc_21px)] px-1 py-1">
-                  <ul className="space-y-2 text-[13px] leading-[21px] text-slate-700">
+                <div className="mt-3 min-h-[208px] rounded-sm bg-[repeating-linear-gradient(180deg,transparent_0,transparent_20px,var(--calendar-border)_21px)] px-1 py-1">
+                  <ul className="space-y-2 text-[13px] leading-[21px] text-[var(--calendar-text-secondary)]">
                     {activeNotes.map((note) => (
                       <li key={note.id} className="flex items-center gap-2">
                         <button
@@ -683,7 +761,7 @@ export default function WallCalendar() {
                           onClick={() => updateNote(note.id, { done: !note.done })}
                           className={[
                             "grid h-4 w-4 place-items-center rounded-sm border text-white transition",
-                            note.done ? "bg-[var(--accent)] border-[var(--accent)]" : "border-slate-400",
+                            note.done ? "bg-[var(--accent)] border-[var(--accent)]" : "border-[var(--calendar-text-muted)]",
                           ].join(" ")}
                           aria-label="Toggle task"
                         >
@@ -697,7 +775,7 @@ export default function WallCalendar() {
                             note.done ? "line-through opacity-60" : "opacity-100",
                           ].join(" ")}
                         />
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-slate-500">
+                        <span className="rounded-full bg-[var(--calendar-chip-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.08em] text-[var(--calendar-chip-text)]">
                           {note.dateKey.slice(8)}
                         </span>
                       </li>
@@ -705,38 +783,23 @@ export default function WallCalendar() {
                   </ul>
                 </div>
 
-                <div className="no-print mt-3 space-y-2 border-b border-[#cbccd1] pb-2">
+                <div className="no-print mt-3 space-y-2 border-b border-[var(--calendar-border)] pb-2">
                   <button
                     type="button"
                     onClick={addQuickTask}
-                    className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+                    className="inline-flex items-center gap-2 rounded-full border border-[var(--accent-border)] bg-[var(--accent)] px-3 py-1 text-xs font-semibold text-white shadow-[0_6px_18px_rgba(15,23,42,0.16)] transition hover:brightness-110"
                   >
-                    <Tag size={14} />
+                    <Tag size={14} className="text-white" />
                     Add Quick Task
                   </button>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-[var(--calendar-text-muted)]">
                     Added tasks map to selected start date or today.
                   </p>
                 </div>
               </div>
 
               <div>
-                <div className="grid grid-cols-7 border-b border-[#d2d6db] pb-2 text-center text-[12px] font-bold tracking-[0.08em] text-slate-700">
-                  {WEEKDAYS.map((day) => (
-                    <span key={day} className={day === "SAT" || day === "SUN" ? "text-[#42a8eb]" : ""}>
-                      {day}
-                    </span>
-                  ))}
-                </div>
-
-                <div className="mt-2 flex items-center justify-between gap-3 text-[11px] uppercase tracking-[0.12em] text-slate-500">
-                  <span>
-                    {rangeStart && rangeEnd
-                      ? `Selected ${formatLabel(rangeStart)} to ${formatLabel(rangeEnd)}`
-                      : rangeStart && previewEnd
-                        ? `Preview ${formatLabel(rangeStart)} to ${formatLabel(previewEnd)}`
-                        : "Select a start date"}
-                  </span>
+                <div className="mb-2 flex justify-end">
                   <button
                     type="button"
                     onClick={() => {
@@ -744,13 +807,25 @@ export default function WallCalendar() {
                       setRangeEnd(null);
                       setHoverDate(null);
                     }}
-                    className="rounded-full border border-slate-200 px-2.5 py-1 text-[10px] font-semibold tracking-[0.08em] text-slate-600 transition hover:bg-white"
+                    className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-[var(--calendar-ring-border)] bg-[var(--calendar-button-bg)] text-[var(--calendar-button-text)] transition hover:bg-[var(--calendar-button-hover)]"
+                    aria-label="Reset selected range"
+                    title="Reset selected range"
                   >
-                    Clear
+                    <RotateCcw size={14} className="text-[var(--accent)]" />
                   </button>
                 </div>
+                <div className="grid grid-cols-7 border-b border-[var(--calendar-border)] pb-2 text-center text-[12px] font-bold tracking-[0.08em] text-[var(--calendar-text-secondary)]">
+                  {WEEKDAYS.map((day) => (
+                    <span
+                      key={day}
+                      className={day === "SAT" || day === "SUN" ? "text-[var(--calendar-weekend)]" : ""}
+                    >
+                      {day}
+                    </span>
+                  ))}
+                </div>
 
-                <div ref={gridRef} className="print-grid grid grid-cols-7 gap-y-1 pt-2">
+                <div ref={gridRef} className="print-grid grid grid-cols-7 gap-y-1 pt-3">
                   {days.map(({ date, inCurrentMonth }) => {
                     const isStart = isSameDay(date, rangeStart);
                     const isEnd = isSameDay(date, rangeEnd);
@@ -779,6 +854,7 @@ export default function WallCalendar() {
                         holidayType={holidayType}
                         activityLevel={activityLevel}
                         accent={theme.accent}
+                        darkMode={darkMode}
                         onSelect={handleDateSelect}
                         onHoverStart={setHoverDate}
                         onHoverEnd={() => setHoverDate(null)}
@@ -789,7 +865,7 @@ export default function WallCalendar() {
               </div>
             </div>
 
-            <p className="pb-1 pt-4 text-center text-[13px] text-slate-600">
+            <p className="pb-1 pt-4 text-center text-[13px] text-[var(--calendar-text-muted)]">
               Click to select start · Click again for end · Notes saved locally
             </p>
           </div>
